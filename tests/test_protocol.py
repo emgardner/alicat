@@ -18,7 +18,12 @@ from alicat.protocol import (
     parse_gas_option,
     parse_setpoint_response,
 )
-from alicat.units import PressureUnit, pressure_unit_label
+from alicat.units import (
+    PressureUnit,
+    TemperatureUnit,
+    pressure_unit_label,
+    temperature_unit_label,
+)
 
 
 DATA_FRAME_FORMAT_LINES = (
@@ -187,10 +192,13 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(response.fields[1].note_tokens, ("010", "02", "PSIA"))
         self.assertEqual(response.fields[1].unit_code, PressureUnit.PSI)
         self.assertEqual(response.fields[1].pressure_unit, PressureUnit.PSI)
-        self.assertEqual(response.fields[1].units, "PSIA")
+        self.assertEqual(response.fields[1].units, "PSI")
+        self.assertEqual(response.fields[2].unit_code, TemperatureUnit.CELSIUS)
+        self.assertEqual(response.fields[2].temperature_unit, TemperatureUnit.CELSIUS)
+        self.assertEqual(response.fields[2].units, "C")
         self.assertEqual(response.fields[5].unit_code, PressureUnit.PSI)
         self.assertEqual(response.fields[5].pressure_unit, PressureUnit.PSI)
-        self.assertEqual(response.fields[5].units, "PSIG")
+        self.assertEqual(response.fields[5].units, "PSI")
         self.assertIsNotNone(response.gas_field)
         assert response.gas_field is not None
         self.assertEqual(response.gas_field.name, "Gas")
@@ -210,11 +218,11 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(
             response.measurement_units,
             {
-                "abs_press": "PSIA",
-                "flow_temp": "`C",
+                "abs_press": "PSI",
+                "flow_temp": "C",
                 "volu_flow": "CCM",
                 "mass_flow": "SCCM",
-                "ga_press_setpt": "PSIG",
+                "ga_press_setpt": "PSI",
                 "valve_drive": "%",
                 "mass_total": "Scm3",
             },
@@ -230,24 +238,33 @@ class ParserTests(unittest.TestCase):
         )
 
         self.assertEqual(response.fields[0].pressure_unit, PressureUnit.PSI)
-        self.assertEqual(response.fields[0].units, "PSIA")
+        self.assertEqual(response.fields[0].units, "PSI")
         self.assertEqual(response.fields[1].pressure_unit, PressureUnit.PSI)
-        self.assertEqual(response.fields[1].units, "PSIG")
+        self.assertEqual(response.fields[1].units, "PSI")
         self.assertEqual(
             response.measurement_units,
-            {"abs_press": "PSIA", "ga_press_setpt": "PSIG"},
+            {"abs_press": "PSI", "ga_press_setpt": "PSI"},
         )
 
     def test_pressure_unit_labels(self) -> None:
-        self.assertEqual(
-            pressure_unit_label(PressureUnit.PSI, reference="absolute"),
-            "PSIA",
-        )
-        self.assertEqual(
-            pressure_unit_label(PressureUnit.PSI, reference="gauge"),
-            "PSIG",
-        )
+        self.assertEqual(pressure_unit_label(PressureUnit.PSI), "PSI")
         self.assertEqual(pressure_unit_label(PressureUnit.KPA), "kPa")
+
+    def test_temperature_units_are_resolved_from_unit_code(self) -> None:
+        response = parse_data_frame_format(
+            (
+                "A D00 ID_ NAME______________________ TYPE_______ WIDTH NOTES___________________",
+                "A D01 003 Flow Temp                  s decimal     7/2 002 02 `C",
+            )
+        )
+
+        self.assertEqual(response.fields[0].temperature_unit, TemperatureUnit.CELSIUS)
+        self.assertEqual(response.fields[0].units, "C")
+        self.assertEqual(response.measurement_units, {"flow_temp": "C"})
+
+    def test_temperature_unit_labels(self) -> None:
+        self.assertEqual(temperature_unit_label(TemperatureUnit.CELSIUS), "C")
+        self.assertEqual(temperature_unit_label(TemperatureUnit.KELVIN), "K")
 
     def test_parses_p2o_status_in_data_frames(self) -> None:
         data_frame_format = parse_data_frame_format(DATA_FRAME_FORMAT_LINES)
@@ -260,8 +277,8 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(frame["ga_press_setpt"], 12.34)
         self.assertEqual(frame["valve_drive"], 56.78)
         self.assertEqual(frame["mass_total"], 12345.0)
-        self.assertEqual(frame.units("abs_press"), "PSIA")
-        self.assertEqual(frame.units("flow_temp"), "`C")
+        self.assertEqual(frame.units("abs_press"), "PSI")
+        self.assertEqual(frame.units("flow_temp"), "C")
         self.assertEqual(frame.units("volu_flow"), "CCM")
         self.assertEqual(frame.units("mass_flow"), "SCCM")
         self.assertEqual(frame.units("valve_drive"), "%")

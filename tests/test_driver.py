@@ -86,8 +86,8 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(frame["ga_press_setpt"], 15.0)
         self.assertEqual(frame["valve_drive"], 100.0)
         self.assertEqual(frame["mass_total"], 0.0)
-        self.assertEqual(frame.units("abs_press"), "PSIA")
-        self.assertEqual(frame.units("flow_temp"), "`C")
+        self.assertEqual(frame.units("abs_press"), "PSI")
+        self.assertEqual(frame.units("flow_temp"), "C")
         self.assertEqual(frame.units("volu_flow"), "CCM")
         self.assertEqual(frame.units("mass_flow"), "SCCM")
         self.assertEqual(frame.units("valve_drive"), "%")
@@ -133,15 +133,15 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
         assert data.valve_drive is not None
         assert data.mass_total is not None
         self.assertEqual(data.abs_press.value, 14.64)
-        self.assertEqual(data.abs_press.units, "PSIA")
-        self.assertEqual(data.flow_temp.units, "`C")
+        self.assertEqual(data.abs_press.units, "PSI")
+        self.assertEqual(data.flow_temp.units, "C")
         self.assertEqual(data.volu_flow.units, "CCM")
         self.assertEqual(data.mass_flow.units, "SCCM")
         self.assertIsNotNone(data.control_setpoint)
         assert data.control_setpoint is not None
         self.assertEqual(data.control_setpoint_name, "ga_press_setpt")
         self.assertEqual(data.control_setpoint.value, 15.0)
-        self.assertEqual(data.control_setpoint.units, "PSIG")
+        self.assertEqual(data.control_setpoint.units, "PSI")
         self.assertEqual(data.valve_drive.value, 100.0)
         self.assertEqual(data.valve_drive.units, "%")
         self.assertEqual(data.mass_total.units, "Scm3")
@@ -165,7 +165,7 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
         driver = AlicatDriver(
             client,
             data_frame_fields=("abs_press", "ga_press_setpt"),
-            data_frame_units={"abs_press": "PSIA", "ga_press_setpt": "PSIG"},
+            data_frame_units={"abs_press": "PSI", "ga_press_setpt": "PSI"},
         )
 
         control_point = await driver.set_control_point(ControlPoint.GAUGE_PRESSURE)
@@ -249,7 +249,7 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
             ["AR122", "AS0", "AW122=38", "A??D*", "AS15"],
         )
         self.assertEqual(frame["ga_press_setpt"], 15.0)
-        self.assertEqual(frame.units("ga_press_setpt"), "PSIG")
+        self.assertEqual(frame.units("ga_press_setpt"), "PSI")
 
     async def test_set_pressure_keeps_existing_pressure_control_point(self) -> None:
         client = ScriptedClient(
@@ -287,7 +287,7 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
         driver = AlicatDriver(
             client,
             data_frame_fields=("abs_press", "ga_press_setpt"),
-            data_frame_units={"abs_press": "PSIA", "ga_press_setpt": "PSIG"},
+            data_frame_units={"abs_press": "PSI", "ga_press_setpt": "PSI"},
         )
 
         await driver.set_control_point(ControlPoint.MASS_FLOW)
@@ -314,7 +314,7 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
                 "mass_flow",
                 "ga_press_setpt",
             ),
-            data_frame_units={"ga_press_setpt": "PSIG"},
+            data_frame_units={"ga_press_setpt": "PSI"},
         )
 
         frame = await driver.set_gas(8)
@@ -328,7 +328,7 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
         driver = AlicatDriver(
             client,
             data_frame_fields=("abs_press", "ga_press_setpt"),
-            data_frame_units={"ga_press_setpt": "PSIG"},
+            data_frame_units={"ga_press_setpt": "PSI"},
         )
 
         response = await driver.set_active_gas(8)
@@ -342,7 +342,7 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
         driver = AlicatDriver(
             client,
             data_frame_fields=("abs_press", "ga_press_setpt"),
-            data_frame_units={"ga_press_setpt": "PSIG"},
+            data_frame_units={"ga_press_setpt": "PSI"},
         )
 
         response = await driver.set_setpoint(1.5, units_value=7)

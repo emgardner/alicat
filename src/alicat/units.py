@@ -1,5 +1,4 @@
 from enum import IntEnum
-from typing import Literal
 
 
 class StandardNormalFlowUnit(IntEnum):
@@ -141,8 +140,6 @@ class PressureUnit(IntEnum):
     PERCENT_FULL_SCALE = 63
 
 
-PressureReference = Literal["absolute", "gauge", "differential"]
-
 PRESSURE_UNIT_LABELS: dict[PressureUnit, str] = {
     PressureUnit.DEFAULT: "default",
     PressureUnit.UNKNOWN: "unknown",
@@ -175,19 +172,10 @@ PRESSURE_UNIT_LABELS: dict[PressureUnit, str] = {
 
 def pressure_unit_label(
     unit: PressureUnit | int,
-    *,
-    reference: PressureReference | None = None,
 ) -> str:
     """Return the display label for a pressure engineering-unit code."""
 
     pressure_unit = PressureUnit(unit)
-    if pressure_unit == PressureUnit.PSI:
-        if reference == "absolute":
-            return "PSIA"
-        if reference == "gauge":
-            return "PSIG"
-        if reference == "differential":
-            return "PSID"
     return PRESSURE_UNIT_LABELS[pressure_unit]
 
 
@@ -198,6 +186,22 @@ class TemperatureUnit(IntEnum):
     FAHRENHEIT = 3
     KELVIN = 4
     RANKINE = 5
+
+
+TEMPERATURE_UNIT_LABELS: dict[TemperatureUnit, str] = {
+    TemperatureUnit.DEFAULT: "default",
+    TemperatureUnit.UNKNOWN: "unknown",
+    TemperatureUnit.CELSIUS: "C",
+    TemperatureUnit.FAHRENHEIT: "F",
+    TemperatureUnit.KELVIN: "K",
+    TemperatureUnit.RANKINE: "R",
+}
+
+
+def temperature_unit_label(unit: TemperatureUnit | int) -> str:
+    """Return the display label for a temperature engineering-unit code."""
+
+    return TEMPERATURE_UNIT_LABELS[TemperatureUnit(unit)]
 
 
 class TimeIntervalUnit(IntEnum):
