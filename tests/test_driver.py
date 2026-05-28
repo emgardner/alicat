@@ -146,7 +146,7 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data.valve_drive.units, "%")
         self.assertEqual(data.mass_total.units, "Scm3")
         self.assertEqual(data.gas, "O2")
-        self.assertEqual(data.statuses, ("LCK",))
+        self.assertEqual(data.status, "LCK")
         self.assertIsNotNone(data.data_frame)
 
     async def test_query_control_point_uses_legacy_register_directly(self) -> None:
@@ -295,7 +295,7 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
         assert isinstance(response, DataFrame)
         self.assertEqual(client.writes, ["A??D*", "ALS 1.76"])
         self.assertEqual(response["ga_press_setpt"], 1.76)
-        self.assertEqual(response.statuses, ("LCK",))
+        self.assertEqual(response.status, "LCK")
 
     async def test_data_frame_with_units_reloads_after_control_point_change(
         self,
@@ -472,9 +472,9 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(hold_frame)
         assert exhaust_frame is not None
         assert hold_frame is not None
-        self.assertEqual(exhaust_frame.statuses[0], "EXH")
-        self.assertEqual(hold_frame.statuses[0], "HLD")
-        self.assertEqual(lock_frame.statuses[0], "LCK")
+        self.assertEqual(exhaust_frame.status, "EXH")
+        self.assertEqual(hold_frame.status, "HLD")
+        self.assertEqual(lock_frame.status, "LCK")
 
     async def test_valve_actions_allow_no_response(self) -> None:
         client = ScriptedClient(

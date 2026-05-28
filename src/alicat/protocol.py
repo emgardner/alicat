@@ -622,7 +622,7 @@ def parse_data_frame(
 
     unit_id = normalize_unit_id(tokens[0])
     payload = list(tokens[1:])
-    status = _pop_status_codes(payload)
+    status = _pop_status(payload)
 
     numeric_tokens: list[str] = []
     text_tokens: list[str] = []
@@ -893,7 +893,7 @@ def _is_number(token: str) -> bool:
     return bool(_NUMBER_RE.match(token))
 
 
-def _pop_status_codes(tokens: list[str]) -> str | None:
+def _pop_status(tokens: list[str]) -> str | None:
     statuses: list[str] = []
     while tokens and tokens[-1].upper() in STATUS_CODES:
         statuses.append(tokens.pop().upper())

@@ -79,12 +79,12 @@ class CommandBuilderTests(unittest.TestCase):
 class ParserTests(unittest.TestCase):
     def test_parses_mass_flow_controller_frame_with_totalizer(self) -> None:
         frame = parse_data_frame(
-            "A +087.59 +025.00 +164.7 +981.6 985.0 022741.4 Air HLD MOV"
+            "A +087.59 +025.00 +164.7 +981.6 985.0 022741.4 Air HLD"
         )
 
         self.assertEqual(frame.unit_id, "A")
         self.assertEqual(frame.gas, "Air")
-        self.assertEqual(frame.statuses, ("HLD", "MOV"))
+        self.assertEqual(frame.status, "HLD")
         self.assertEqual(frame["absolute_pressure"], 87.59)
         self.assertEqual(frame["mass_flow"], 981.6)
         self.assertEqual(frame["totalized_flow"], 22741.4)
@@ -95,29 +95,27 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(frame.measurements["absolute_pressure"], 10.02)
         self.assertEqual(frame.measurements["volumetric_flow"], 128.0)
         self.assertEqual(frame.gas, "He")
+        self.assertIsNone(frame.status)
 
     def test_parses_known_status_codes_as_strings(self) -> None:
-        frame = parse_data_frame(
-            "A +001.0 Air ADC EXH HLD LCK MOV OPL OVR P2O POV TMF TOV VOV"
-        )
+        for status in (
+            "ADC",
+            "EXH",
+            "HLD",
+            "LCK",
+            "MOV",
+            "OPL",
+            "OVR",
+            "P2O",
+            "POV",
+            "TMF",
+            "TOV",
+            "VOV",
+        ):
+            with self.subTest(status=status):
+                frame = parse_data_frame(f"A +001.0 Air {status}")
 
-        self.assertEqual(
-            frame.statuses,
-            (
-                "ADC",
-                "EXH",
-                "HLD",
-                "LCK",
-                "MOV",
-                "OPL",
-                "OVR",
-                "P2O",
-                "POV",
-                "TMF",
-                "TOV",
-                "VOV",
-            ),
-        )
+                self.assertEqual(frame.status, status)
 
     def test_parses_custom_field_names(self) -> None:
         frame = parse_data_frame(
@@ -311,7 +309,7 @@ class ParserTests(unittest.TestCase):
     def test_parses_p2o_status_in_data_frames(self) -> None:
         data_frame_format = parse_data_frame_format(DATA_FRAME_FORMAT_LINES)
         frame = parse_data_frame(
-            "A +087.59 +025.00 +164.7 +981.6 +012.34 +056.78 00012345 N2 P2O HLD",
+            "A +087.59 +025.00 +164.7 +981.6 +012.34 +056.78 00012345 N2 P2O",
             field_names=data_frame_format.measurement_field_names,
             field_units=data_frame_format.measurement_units,
         )
@@ -326,7 +324,7 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(frame.units("valve_drive"), "%")
         self.assertEqual(frame.units("mass_total"), "Scm3")
         self.assertEqual(frame.gas, "N2")
-        self.assertEqual(frame.statuses, ("P2O", "HLD"))
+        self.assertEqual(frame.status, "P2O")
 
     def test_parses_gas_rows(self) -> None:
         gas = parse_gas_option("A G08       N2")
