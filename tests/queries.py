@@ -38,14 +38,20 @@ async def main() -> None:
         # print(await driver.query_control_point())
         # print(await driver.unlock_display())
         # await run_hold(driver)
+        #await driver.stop_streaming(UNIT_ID)
+        #data = await driver.query_data_frame_format()
+        #for field in data.fields:
+        #    print(field)
         for i in range(0, 10):
             await driver.set_pressure(i)
             data = await driver.query_data_frame_with_units()
-            print(data.control_setpoint, data.control_setpoint_name, data.ga_press_setpt)
+            print(data)
+            #print(data.control_setpoint, data.control_setpoint_name, data.ga_press_setpt)
         for i in range(0, 10):
             await driver.set_flowrate(i)
             data = await driver.query_data_frame_with_units()
-            print(data.control_setpoint, data.control_setpoint_name, data.ga_press_setpt)
+            print(data)
+            #print(data.control_setpoint, data.control_setpoint_name, data.ga_press_setpt)
         # await asyncio.sleep(5)
         # print(await driver.exhaust())
         # print(await driver.cancel_valve_hold())

@@ -1,4 +1,5 @@
 from enum import IntEnum
+from typing import Literal
 
 
 class StandardNormalFlowUnit(IntEnum):
@@ -138,6 +139,56 @@ class PressureUnit(IntEnum):
     VOLT = 61
     COUNT = 62
     PERCENT_FULL_SCALE = 63
+
+
+PressureReference = Literal["absolute", "gauge", "differential"]
+
+PRESSURE_UNIT_LABELS: dict[PressureUnit, str] = {
+    PressureUnit.DEFAULT: "default",
+    PressureUnit.UNKNOWN: "unknown",
+    PressureUnit.PA: "Pa",
+    PressureUnit.HPA: "hPa",
+    PressureUnit.KPA: "kPa",
+    PressureUnit.MPA: "MPa",
+    PressureUnit.MBAR: "mbar",
+    PressureUnit.BAR: "bar",
+    PressureUnit.G_PER_CM2: "g/cm2",
+    PressureUnit.KG_PER_CM2: "kg/cm2",
+    PressureUnit.PSI: "PSI",
+    PressureUnit.PSF: "PSF",
+    PressureUnit.MTORR: "mTorr",
+    PressureUnit.TORR: "Torr",
+    PressureUnit.MMHG: "mmHg",
+    PressureUnit.INHG: "inHg",
+    PressureUnit.MMH2O_4C: "mmH2O_4C",
+    PressureUnit.MMH2O_60F: "mmH2O_60F",
+    PressureUnit.CMH2O_4C: "cmH2O_4C",
+    PressureUnit.CMH2O_60F: "cmH2O_60F",
+    PressureUnit.INH2O_4C: "inH2O_4C",
+    PressureUnit.INH2O_60F: "inH2O_60F",
+    PressureUnit.ATM: "atm",
+    PressureUnit.VOLT: "V",
+    PressureUnit.COUNT: "count",
+    PressureUnit.PERCENT_FULL_SCALE: "%",
+}
+
+
+def pressure_unit_label(
+    unit: PressureUnit | int,
+    *,
+    reference: PressureReference | None = None,
+) -> str:
+    """Return the display label for a pressure engineering-unit code."""
+
+    pressure_unit = PressureUnit(unit)
+    if pressure_unit == PressureUnit.PSI:
+        if reference == "absolute":
+            return "PSIA"
+        if reference == "gauge":
+            return "PSIG"
+        if reference == "differential":
+            return "PSID"
+    return PRESSURE_UNIT_LABELS[pressure_unit]
 
 
 class TemperatureUnit(IntEnum):

@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterator, Mapping, Sequence
 
+from alicat.units import PressureReference, PressureUnit, pressure_unit_label
+
 COMMAND_TERMINATOR = b"\r"
 
 _UNIT_ID_RE = re.compile(r"^[A-Z@]$")
@@ -225,9 +227,36 @@ class DataFrameFormatField:
         return self.statistic == 702
 
     @property
+    def is_pressure(self) -> bool:
+        name = f"{self.name} {self.key}".lower()
+        return "press" in name or "pressure" in name
+
+    @property
+    def unit_code(self) -> int | None:
+        if not self.note_tokens or not self.note_tokens[0].isdigit():
+            return None
+        return int(self.note_tokens[0])
+
+    @property
+    def pressure_unit(self) -> PressureUnit | None:
+        unit_code = self.unit_code
+        if not self.is_pressure or unit_code is None:
+            return None
+        try:
+            return PressureUnit(unit_code)
+        except ValueError:
+            return None
+
+    @property
     def units(self) -> str | None:
         if not self.is_numeric or not self.note_tokens:
             return None
+        pressure_unit = self.pressure_unit
+        if pressure_unit is not None:
+            return pressure_unit_label(
+                pressure_unit,
+                reference=_pressure_reference_for_field(self),
+            )
         return self.note_tokens[-1]
 
 
@@ -788,6 +817,19 @@ def _last_register_value(payload: str) -> str:
     if not tokens:
         raise ParseError("control-point response does not contain a register value")
     return tokens[-1]
+
+
+def _pressure_reference_for_field(
+    field: DataFrameFormatField,
+) -> PressureReference | None:
+    text = f"{field.name} {field.key} {field.notes}".lower()
+    if "psia" in text or "abs" in text or "absolute" in text:
+        return "absolute"
+    if "psig" in text or "gauge" in text or "ga_press" in text or " ga " in text:
+        return "gauge"
+    if "psid" in text or "diff" in text or "differential" in text:
+        return "differential"
+    return None
 
 
 def _parse_data_frame_format_field(

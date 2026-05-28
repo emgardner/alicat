@@ -18,6 +18,7 @@ from alicat.protocol import (
     parse_gas_option,
     parse_setpoint_response,
 )
+from alicat.units import PressureUnit, pressure_unit_label
 
 
 DATA_FRAME_FORMAT_LINES = (
@@ -184,7 +185,12 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(response.fields[1].data_type, "s decimal")
         self.assertEqual(response.fields[1].width, "7/2")
         self.assertEqual(response.fields[1].note_tokens, ("010", "02", "PSIA"))
+        self.assertEqual(response.fields[1].unit_code, PressureUnit.PSI)
+        self.assertEqual(response.fields[1].pressure_unit, PressureUnit.PSI)
         self.assertEqual(response.fields[1].units, "PSIA")
+        self.assertEqual(response.fields[5].unit_code, PressureUnit.PSI)
+        self.assertEqual(response.fields[5].pressure_unit, PressureUnit.PSI)
+        self.assertEqual(response.fields[5].units, "PSIG")
         self.assertIsNotNone(response.gas_field)
         assert response.gas_field is not None
         self.assertEqual(response.gas_field.name, "Gas")
@@ -213,6 +219,35 @@ class ParserTests(unittest.TestCase):
                 "mass_total": "Scm3",
             },
         )
+
+    def test_pressure_units_are_resolved_from_unit_code(self) -> None:
+        response = parse_data_frame_format(
+            (
+                "A D00 ID_ NAME______________________ TYPE_______ WIDTH NOTES___________________",
+                "A D01 002 Abs Press                  s decimal     7/2 010 02",
+                "A D02 038 Ga Press Setpt             s decimal     7/2 010 02",
+            )
+        )
+
+        self.assertEqual(response.fields[0].pressure_unit, PressureUnit.PSI)
+        self.assertEqual(response.fields[0].units, "PSIA")
+        self.assertEqual(response.fields[1].pressure_unit, PressureUnit.PSI)
+        self.assertEqual(response.fields[1].units, "PSIG")
+        self.assertEqual(
+            response.measurement_units,
+            {"abs_press": "PSIA", "ga_press_setpt": "PSIG"},
+        )
+
+    def test_pressure_unit_labels(self) -> None:
+        self.assertEqual(
+            pressure_unit_label(PressureUnit.PSI, reference="absolute"),
+            "PSIA",
+        )
+        self.assertEqual(
+            pressure_unit_label(PressureUnit.PSI, reference="gauge"),
+            "PSIG",
+        )
+        self.assertEqual(pressure_unit_label(PressureUnit.KPA), "kPa")
 
     def test_parses_p2o_status_in_data_frames(self) -> None:
         data_frame_format = parse_data_frame_format(DATA_FRAME_FORMAT_LINES)
