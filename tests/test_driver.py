@@ -3,7 +3,7 @@ import unittest
 
 from alicat.client import AbstractClient
 from alicat.driver import AlicatDriver
-from alicat.protocol import ControlMode, ControlPoint
+from alicat.protocol import ControlMode, ControlPoint, DataFrame, SetpointResponse
 
 
 class ScriptedClient(AbstractClient):
@@ -265,6 +265,38 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client.writes, ["AR122", "AS15"])
         self.assertEqual(frame["setpoint"], 15.0)
 
+    async def test_setpoint_commands_accept_data_frame_echoes(self) -> None:
+        client = ScriptedClient(
+            {
+                "A??D*": [
+                    "A D00 ID_ NAME______________________ TYPE_______ WIDTH NOTES___________________",
+                    "A D01 700 Unit ID                    string          1",
+                    "A D02 002 Abs Press                  s decimal     7/2 010 02 PSIA",
+                    "A D03 003 Flow Temp                  s decimal     7/2 002 02 `C",
+                    "A D04 004 Volu Flow                  s decimal     7/1 012 02 CCM",
+                    "A D05 005 Mass Flow                  s decimal     7/1 012 02 SCCM",
+                    "A D06 038 Ga Press Setpt             s decimal     7/2 010 02 PSI",
+                    "A D07 013 Valve Drive                s decimal     7/2 063 02 %",
+                    "A D08 009 Mass Total                 s decimal     8/0 006 02 Scm3",
+                    "A D09 703 Gas                        string          6",
+                    "A D19 702 *Status                    string          3 LCK",
+                ],
+                "ALS 1.76": [
+                    "A +014.60 +040.13 +0000.0 +0000.0 +001.76 +000.00 +0000000 Air LCK"
+                ],
+            }
+        )
+        driver = AlicatDriver(client)
+        await driver.query_data_frame_format()
+
+        response = await driver.set_setpoint(1.76)
+
+        self.assertIsInstance(response, DataFrame)
+        assert isinstance(response, DataFrame)
+        self.assertEqual(client.writes, ["A??D*", "ALS 1.76"])
+        self.assertEqual(response["ga_press_setpt"], 1.76)
+        self.assertEqual(response.statuses, ("LCK",))
+
     async def test_data_frame_with_units_reloads_after_control_point_change(
         self,
     ) -> None:
@@ -347,6 +379,8 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
 
         response = await driver.set_setpoint(1.5, units_value=7)
 
+        self.assertIsInstance(response, SetpointResponse)
+        assert isinstance(response, SetpointResponse)
         self.assertEqual(response.requested, 1.5)
         self.assertIsNone(driver.data_frame_fields)
         self.assertEqual(driver.data_frame_units, {})
@@ -385,6 +419,8 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(control_point.mode, ControlMode.FLOW)
         self.assertEqual(control_mode, ControlMode.FLOW)
         self.assertEqual(baud_rate, 19200)
+        self.assertIsInstance(setpoint, SetpointResponse)
+        assert isinstance(setpoint, SetpointResponse)
         self.assertEqual(setpoint.unit_label, "SLPM")
         self.assertEqual(gases.names, ("Air", "Ar", "N2"))
         self.assertEqual(gases.numbers, (0, 1, 8))
@@ -427,6 +463,8 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
         lock_frame = await driver.lock_display()
         await driver.unlock_display()
 
+        self.assertIsInstance(setpoint, SetpointResponse)
+        assert isinstance(setpoint, SetpointResponse)
         self.assertEqual(setpoint.requested, 2.5)
         self.assertEqual(legacy_setpoint["setpoint"], 0.0)
         self.assertEqual(gas_frame.gas, "N2")
@@ -434,9 +472,9 @@ class AlicatDriverTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(hold_frame)
         assert exhaust_frame is not None
         assert hold_frame is not None
-        self.assertEqual(exhaust_frame.statuses[0].value, "EXH")
-        self.assertEqual(hold_frame.statuses[0].value, "HLD")
-        self.assertEqual(lock_frame.statuses[0].value, "LCK")
+        self.assertEqual(exhaust_frame.statuses[0], "EXH")
+        self.assertEqual(hold_frame.statuses[0], "HLD")
+        self.assertEqual(lock_frame.statuses[0], "LCK")
 
     async def test_valve_actions_allow_no_response(self) -> None:
         client = ScriptedClient(

@@ -131,6 +131,10 @@ _MASS_FLOW_CONTROLLER_TOTALIZER_FIELDS = _MASS_FLOW_CONTROLLER_FIELDS + (
 )
 _LIQUID_FLOW_METER_FIELDS = ("pressure", "temperature", "volumetric_flow")
 _DIFFERENTIAL_PRESSURE_FIELDS = ("differential_pressure",)
+_PRESSURE_FIELD_STATISTICS = frozenset({2, 34, 38, 39})
+_TEMPERATURE_FIELD_STATISTICS = frozenset({3})
+_PRESSURE_FIELD_TOKENS = ("press", "pressure")
+_TEMPERATURE_FIELD_TOKENS = ("temp", "temperature")
 
 
 @dataclass(frozen=True)
@@ -145,11 +149,15 @@ class DataFrame:
     unit_id: str
     values: tuple[float, ...]
     gas: str | None = None
-    statuses: tuple[StatusCode, ...] = ()
+    status: str | None = None
     measurements: Mapping[str, float] = field(default_factory=dict)
     measurement_units: Mapping[str, str] = field(default_factory=dict)
     raw: str = ""
     tokens: tuple[str, ...] = ()
+
+    @property
+    def statuses(self) -> tuple[str, ...]:
+        return (self.status,) if self.status is not None else ()
 
     def __getitem__(self, name: str) -> float:
         return self.measurements[name]
@@ -233,13 +241,21 @@ class DataFrameFormatField:
 
     @property
     def is_pressure(self) -> bool:
+        if not self.is_numeric:
+            return False
+        if self.statistic in _PRESSURE_FIELD_STATISTICS:
+            return True
         name = f"{self.name} {self.key}".lower()
-        return "press" in name or "pressure" in name
+        return any(token in name for token in _PRESSURE_FIELD_TOKENS)
 
     @property
     def is_temperature(self) -> bool:
+        if not self.is_numeric:
+            return False
+        if self.statistic in _TEMPERATURE_FIELD_STATISTICS:
+            return True
         name = f"{self.name} {self.key}".lower()
-        return "temp" in name or "temperature" in name
+        return any(token in name for token in _TEMPERATURE_FIELD_TOKENS)
 
     @property
     def unit_code(self) -> int | None:
@@ -606,7 +622,7 @@ def parse_data_frame(
 
     unit_id = normalize_unit_id(tokens[0])
     payload = list(tokens[1:])
-    statuses = _pop_status_codes(payload)
+    status = _pop_status_codes(payload)
 
     numeric_tokens: list[str] = []
     text_tokens: list[str] = []
@@ -632,7 +648,7 @@ def parse_data_frame(
         unit_id=unit_id,
         values=values,
         gas=gas,
-        statuses=statuses,
+        status=status,
         measurements=measurements,
         measurement_units=measurement_units,
         raw=raw,
@@ -877,12 +893,12 @@ def _is_number(token: str) -> bool:
     return bool(_NUMBER_RE.match(token))
 
 
-def _pop_status_codes(tokens: list[str]) -> tuple[StatusCode, ...]:
-    statuses: list[StatusCode] = []
+def _pop_status_codes(tokens: list[str]) -> str | None:
+    statuses: list[str] = []
     while tokens and tokens[-1].upper() in STATUS_CODES:
-        statuses.append(StatusCode(tokens.pop().upper()))
+        statuses.append(tokens.pop().upper())
     statuses.reverse()
-    return tuple(statuses)
+    return " ".join(statuses) or None
 
 
 def _resolve_field_names(

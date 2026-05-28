@@ -6,7 +6,6 @@ from alicat.protocol import (
     ControlPoint,
     DeviceRejectedCommand,
     ParseError,
-    StatusCode,
     control_mode_for_point,
     encode_command,
     normalize_control_point,
@@ -85,7 +84,7 @@ class ParserTests(unittest.TestCase):
 
         self.assertEqual(frame.unit_id, "A")
         self.assertEqual(frame.gas, "Air")
-        self.assertEqual(frame.statuses, (StatusCode.HLD, StatusCode.MOV))
+        self.assertEqual(frame.statuses, ("HLD", "MOV"))
         self.assertEqual(frame["absolute_pressure"], 87.59)
         self.assertEqual(frame["mass_flow"], 981.6)
         self.assertEqual(frame["totalized_flow"], 22741.4)
@@ -96,6 +95,29 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(frame.measurements["absolute_pressure"], 10.02)
         self.assertEqual(frame.measurements["volumetric_flow"], 128.0)
         self.assertEqual(frame.gas, "He")
+
+    def test_parses_known_status_codes_as_strings(self) -> None:
+        frame = parse_data_frame(
+            "A +001.0 Air ADC EXH HLD LCK MOV OPL OVR P2O POV TMF TOV VOV"
+        )
+
+        self.assertEqual(
+            frame.statuses,
+            (
+                "ADC",
+                "EXH",
+                "HLD",
+                "LCK",
+                "MOV",
+                "OPL",
+                "OVR",
+                "P2O",
+                "POV",
+                "TMF",
+                "TOV",
+                "VOV",
+            ),
+        )
 
     def test_parses_custom_field_names(self) -> None:
         frame = parse_data_frame(
@@ -262,6 +284,26 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(response.fields[0].units, "C")
         self.assertEqual(response.measurement_units, {"flow_temp": "C"})
 
+    def test_unit_code_lookup_only_applies_to_pressure_and_temperature(self) -> None:
+        response = parse_data_frame_format(
+            (
+                "A D00 ID_ NAME______________________ TYPE_______ WIDTH NOTES___________________",
+                "A D01 999 Some Value                 s decimal     7/2 010 02 raw",
+                "A D02 998 Other Value                s decimal     7/2 002 02 raw",
+                "A D03 700 Press Label                string          1 010",
+                "A D04 700 Temp Label                 string          1 002",
+            )
+        )
+
+        self.assertIsNone(response.fields[0].pressure_unit)
+        self.assertIsNone(response.fields[1].temperature_unit)
+        self.assertIsNone(response.fields[2].pressure_unit)
+        self.assertIsNone(response.fields[3].temperature_unit)
+        self.assertEqual(
+            response.measurement_units,
+            {"some_value": "raw", "other_value": "raw"},
+        )
+
     def test_temperature_unit_labels(self) -> None:
         self.assertEqual(temperature_unit_label(TemperatureUnit.CELSIUS), "C")
         self.assertEqual(temperature_unit_label(TemperatureUnit.KELVIN), "K")
@@ -284,7 +326,7 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(frame.units("valve_drive"), "%")
         self.assertEqual(frame.units("mass_total"), "Scm3")
         self.assertEqual(frame.gas, "N2")
-        self.assertEqual(frame.statuses, (StatusCode.P2O, StatusCode.HLD))
+        self.assertEqual(frame.statuses, ("P2O", "HLD"))
 
     def test_parses_gas_rows(self) -> None:
         gas = parse_gas_option("A G08       N2")

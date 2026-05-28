@@ -73,9 +73,13 @@ class DataFrameWithUnits:
     valve_drive: Measurement | None = None
     mass_total: Measurement | None = None
     gas: str | None = None
-    statuses: tuple[str, ...] = ()
+    status: str | None = None
     raw: str = ""
     data_frame: DataFrame | None = None
+
+    @property
+    def statuses(self) -> tuple[str, ...]:
+        return (self.status,) if self.status is not None else ()
 
 
 class AlicatDriver:
@@ -392,19 +396,19 @@ class AlicatDriver:
         response = await self._request_raw(self.commands.set_baud_rate(baud_rate))
         return _parse_single_int_response(response, "baud rate")
 
-    async def query_setpoint(self) -> SetpointResponse:
+    async def query_setpoint(self) -> SetpointResponse | DataFrame:
         response = await self._request_raw(self.commands.query_setpoint())
-        return parse_setpoint_response(response)
+        return self._parse_setpoint_or_data_frame(response)
 
     async def query_or_set_setpoint(
         self,
         value: float | None = None,
         units_value: int | None = None,
-    ) -> SetpointResponse:
+    ) -> SetpointResponse | DataFrame:
         response = await self._request_raw(
             self.commands.query_or_set_setpoint(value, units_value)
         )
-        parsed = parse_setpoint_response(response)
+        parsed = self._parse_setpoint_or_data_frame(response)
         if value is not None and units_value is not None:
             self.invalidate_data_frame_format()
         return parsed
@@ -413,7 +417,7 @@ class AlicatDriver:
         self,
         value: float,
         units_value: int | None = None,
-    ) -> SetpointResponse:
+    ) -> SetpointResponse | DataFrame:
         """Set the controller setpoint using the 9v00+ command."""
 
         return await self.query_or_set_setpoint(value, units_value)
@@ -658,6 +662,18 @@ class AlicatDriver:
             field_units=self.data_frame_units,
         )
 
+    def _parse_setpoint_or_data_frame(
+        self,
+        response: str,
+    ) -> SetpointResponse | DataFrame:
+        try:
+            return parse_setpoint_response(response)
+        except ParseError as setpoint_error:
+            try:
+                return self._parse_data_frame(response)
+            except ParseError:
+                raise setpoint_error
+
 
 def _parse_token_response(line: str) -> TokenResponse:
     raw = _clean_response(line)
@@ -684,7 +700,7 @@ def _data_frame_with_units(data_frame: DataFrame) -> DataFrameWithUnits:
         valve_drive=_measurement(data_frame, "valve_drive"),
         mass_total=_measurement(data_frame, "mass_total"),
         gas=data_frame.gas,
-        statuses=tuple(status.value for status in data_frame.statuses),
+        status=data_frame.status,
         raw=data_frame.raw,
         data_frame=data_frame,
     )
