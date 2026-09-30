@@ -50,6 +50,24 @@ DATA_FRAME_FORMAT_LINES = (
     "A D21 702 *Status                    string          3 LCK",
 )
 
+LEGACY_DATA_FRAME_FORMAT_LINES = (
+    "A  D00 NAME_______ TYPE_____ MinVal_  MaxVal_  UNITS__",
+    "A  D01 Unit ID     char         A         Z         na",
+    "A  D02 Pressure    signed    +0000.0  +0425.0     PSIA",
+    "A  D03 Temperature signed    -010.00  +050.00        C",
+    "A  D04 Volumetric  signed    +0.0000  +0.5000      LPM",
+    "A  D05 Mass        signed    +00.000  +01.000     SLPM",
+    "A  D06 SetPoint    signed    +00.000  +01.000     SLPM",
+    "A  D07 Gas         string        Air       D2       na",
+    "A  D08 Error       string         na      ADC       na",
+    "A  D09 Status      string         na      LCK       na",
+    "A  D10 Status      string         na      OVR       na",
+    "A  D11 Status      string         na      POV       na",
+    "A  D12 Status      string         na      TOV       na",
+    "A  D13 Status      string         na      VOV       na",
+    "A  D14 Status      string         na      MOV       na",
+)
+
 
 class CommandBuilderTests(unittest.TestCase):
     def test_builds_common_commands(self) -> None:
@@ -85,15 +103,15 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(frame.unit_id, "A")
         self.assertEqual(frame.gas, "Air")
         self.assertEqual(frame.status, "HLD")
-        self.assertEqual(frame["absolute_pressure"], 87.59)
+        self.assertEqual(frame["abs_press"], 87.59)
         self.assertEqual(frame["mass_flow"], 981.6)
-        self.assertEqual(frame["totalized_flow"], 22741.4)
+        self.assertEqual(frame["mass_total"], 22741.4)
 
     def test_parses_mass_flow_meter_frame(self) -> None:
         frame = parse_data_frame("B +010.02 +025.00 +128.0 +87.2 He")
 
-        self.assertEqual(frame.measurements["absolute_pressure"], 10.02)
-        self.assertEqual(frame.measurements["volumetric_flow"], 128.0)
+        self.assertEqual(frame.measurements["abs_press"], 10.02)
+        self.assertEqual(frame.measurements["volu_flow"], 128.0)
         self.assertEqual(frame.gas, "He")
         self.assertIsNone(frame.status)
 
@@ -247,6 +265,79 @@ class ParserTests(unittest.TestCase):
                 "mass_total": "Scm3",
             },
         )
+
+    def test_parses_legacy_data_frame_format_response(self) -> None:
+        response = parse_data_frame_format(LEGACY_DATA_FRAME_FORMAT_LINES)
+
+        self.assertEqual(response.unit_id, "A")
+        self.assertEqual(len(response.fields), 14)
+        self.assertIsNone(response.fields[1].statistic)
+        self.assertEqual(response.fields[1].name, "Pressure")
+        self.assertEqual(response.fields[1].key, "abs_press")
+        self.assertEqual(response.fields[1].data_type, "signed")
+        self.assertEqual(response.fields[1].units, "PSIA")
+        self.assertTrue(response.fields[1].is_numeric)
+        self.assertEqual(response.fields[2].key, "flow_temp")
+        self.assertEqual(response.fields[2].units, "C")
+        self.assertEqual(response.fields[3].key, "volu_flow")
+        self.assertEqual(response.fields[3].units, "LPM")
+        self.assertEqual(response.fields[4].key, "mass_flow")
+        self.assertEqual(response.fields[5].key, "setpoint")
+        self.assertFalse(response.fields[0].is_numeric)
+        self.assertEqual(response.fields[0].units, None)
+        self.assertIsNotNone(response.gas_field)
+        assert response.gas_field is not None
+        self.assertEqual(response.gas_field.name, "Gas")
+        self.assertEqual(len(response.error_fields), 1)
+        self.assertEqual(len(response.status_fields), 6)
+        self.assertEqual(
+            response.measurement_field_names,
+            (
+                "abs_press",
+                "flow_temp",
+                "volu_flow",
+                "mass_flow",
+                "setpoint",
+            ),
+        )
+        self.assertEqual(
+            response.measurement_units,
+            {
+                "abs_press": "PSIA",
+                "flow_temp": "C",
+                "volu_flow": "LPM",
+                "mass_flow": "SLPM",
+                "setpoint": "SLPM",
+            },
+        )
+
+    def test_legacy_gauge_pressure_name_resolves_from_units(self) -> None:
+        response = parse_data_frame_format(
+            (
+                "A  D00 NAME_______ TYPE_____ MinVal_  MaxVal_  UNITS__",
+                "A  D01 Pressure    signed    +0000.0  +0425.0     PSIG",
+            )
+        )
+
+        self.assertEqual(response.fields[0].key, "ga_press")
+        self.assertEqual(response.measurement_field_names, ("ga_press",))
+
+    def test_parses_legacy_frame_with_format_field_names(self) -> None:
+        data_frame_format = parse_data_frame_format(LEGACY_DATA_FRAME_FORMAT_LINES)
+        frame = parse_data_frame(
+            "A +0014.8 +027.04 +0.0038 +00.004 00.353      H2",
+            field_names=data_frame_format.measurement_field_names,
+            field_units=data_frame_format.measurement_units,
+        )
+
+        self.assertEqual(frame["abs_press"], 14.8)
+        self.assertEqual(frame["flow_temp"], 27.04)
+        self.assertEqual(frame["volu_flow"], 0.0038)
+        self.assertEqual(frame["mass_flow"], 0.004)
+        self.assertEqual(frame["setpoint"], 0.353)
+        self.assertEqual(frame.units("abs_press"), "PSIA")
+        self.assertEqual(frame.units("flow_temp"), "C")
+        self.assertEqual(frame.gas, "H2")
 
     def test_pressure_units_are_resolved_from_unit_code(self) -> None:
         response = parse_data_frame_format(

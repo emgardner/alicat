@@ -1,7 +1,6 @@
 import asyncio
 from typing import Any, Awaitable, Callable
 from alicat import AlicatDriver, AsyncSerialClient  # noqa: E402
-from alicat.units import GasNumber
 
 PORT = "/dev/tty.usbserial-A9RK9TER"
 UNIT_ID = "A"

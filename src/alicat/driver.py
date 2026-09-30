@@ -8,6 +8,7 @@ from typing import Any, Mapping, Sequence
 
 from alicat.client import AbstractClient, AsyncSerialClient, AsyncTcpClient
 from alicat.protocol import (
+    AlicatProtocolError,
     AvailableGases,
     CommandBuilder,
     ControlMode,
@@ -100,6 +101,7 @@ class AlicatDriver:
         )
         self.data_frame_units = dict(data_frame_units or {})
         self.data_frame_format: DataFrameFormat | None = None
+        self._data_frame_format_failed = False
         self.control_point: ControlPoint | None = None
         self._lock = asyncio.Lock()
 
@@ -177,6 +179,7 @@ class AlicatDriver:
         self.data_frame_format = None
         self.data_frame_fields = None
         self.data_frame_units = {}
+        self._data_frame_format_failed = False
 
     async def query_data_frame_with_units(self) -> DataFrameWithUnits:
         """Query the current data frame as common measurements with units.
@@ -185,8 +188,7 @@ class AlicatDriver:
         ``??D*`` so the returned measurements include field names and units.
         """
 
-        if self.data_frame_fields is None or not self.data_frame_units:
-            await self.query_data_frame_format()
+        await self._ensure_data_frame_format()
         return _data_frame_with_units(await self.poll())
 
     async def request_data(
@@ -268,6 +270,7 @@ class AlicatDriver:
         self.data_frame_format = data_frame_format
         self.data_frame_fields = data_frame_format.measurement_field_names
         self.data_frame_units = dict(data_frame_format.measurement_units)
+        self._data_frame_format_failed = False
         return data_frame_format
 
     async def query_data_frame_format_lines(
@@ -276,29 +279,40 @@ class AlicatDriver:
         *,
         max_lines: int = 64,
     ) -> tuple[str, ...]:
-        """Return the raw ``??D*`` response lines."""
+        """Return the raw ``??D*`` response lines and cache the parsed format."""
 
         if line_count is None:
-            return await self._request_lines_until_timeout(
+            lines = await self._request_lines_until_timeout(
                 self.commands.query_data_frame_format(),
                 max_lines,
             )
-        return await self._request_lines(
-            self.commands.query_data_frame_format(),
-            line_count,
-        )
+        else:
+            lines = await self._request_lines(
+                self.commands.query_data_frame_format(),
+                line_count,
+            )
+        try:
+            data_frame_format = parse_data_frame_format(lines)
+        except ParseError:
+            return lines
+        self.data_frame_format = data_frame_format
+        self.data_frame_fields = data_frame_format.measurement_field_names
+        self.data_frame_units = dict(data_frame_format.measurement_units)
+        self._data_frame_format_failed = False
+        return lines
 
     async def configure_data_frame_format(
         self,
         format_id: int,
         field_names: Sequence[str] | None = None,
     ) -> DataFrame:
-        frame = await self._request_data_frame(
-            self.commands.configure_data_frame_format(format_id),
-            field_names,
+        response = await self._request_raw(
+            self.commands.configure_data_frame_format(format_id)
         )
         self.invalidate_data_frame_format()
-        return frame
+        if field_names is None:
+            await self._ensure_data_frame_format()
+        return self._parse_data_frame(response, field_names)
 
     async def query_manufacturer_info(self, line_count: int = 10) -> tuple[str, ...]:
         return await self._request_lines(
@@ -649,6 +663,16 @@ class AlicatDriver:
             except TimeoutError:
                 return None
         return self._parse_data_frame(response, field_names)
+
+    async def _ensure_data_frame_format(self) -> None:
+        """Lazily read ``??D*`` so data frames get real field names once."""
+
+        if self.data_frame_fields is not None or self._data_frame_format_failed:
+            return
+        try:
+            await self.query_data_frame_format()
+        except (AlicatProtocolError, asyncio.TimeoutError):
+            self._data_frame_format_failed = True
 
     def _parse_data_frame(
         self,

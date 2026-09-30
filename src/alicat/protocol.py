@@ -19,8 +19,7 @@ COMMAND_TERMINATOR = b"\r"
 _UNIT_ID_RE = re.compile(r"^[A-Z@]$")
 _NUMBER_RE = re.compile(r"^[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[Ee][+-]?\d+)?$")
 _DATA_FRAME_FORMAT_RE = re.compile(
-    r"^(?P<unit_id>\S+)\s+(?P<row_id>D\d+)\s+"
-    r"(?P<statistic>\S+)\s+(?P<rest>.*)$"
+    r"^(?P<unit_id>\S+)\s+(?P<row_id>D\d+)\s+(?P<rest>.*)$"
 )
 _GAS_RE = re.compile(r"^(?P<unit_id>\S+)\s+G(?P<number>\d+)\s+(?P<name>.+)$")
 _SNAKE_CASE_RE = re.compile(r"[^0-9A-Za-z]+")
@@ -120,21 +119,36 @@ _CONTROL_POINT_ALIASES: Mapping[str, ControlPoint] = {
 }
 
 _MASS_FLOW_METER_FIELDS = (
-    "absolute_pressure",
-    "temperature",
-    "volumetric_flow",
+    "abs_press",
+    "flow_temp",
+    "volu_flow",
     "mass_flow",
 )
 _MASS_FLOW_CONTROLLER_FIELDS = _MASS_FLOW_METER_FIELDS + ("setpoint",)
 _MASS_FLOW_CONTROLLER_TOTALIZER_FIELDS = _MASS_FLOW_CONTROLLER_FIELDS + (
-    "totalized_flow",
+    "mass_total",
 )
-_LIQUID_FLOW_METER_FIELDS = ("pressure", "temperature", "volumetric_flow")
+_LIQUID_FLOW_METER_FIELDS = ("abs_press", "flow_temp", "volu_flow")
 _DIFFERENTIAL_PRESSURE_FIELDS = ("differential_pressure",)
 _PRESSURE_FIELD_STATISTICS = frozenset({2, 34, 38, 39})
 _TEMPERATURE_FIELD_STATISTICS = frozenset({3})
 _PRESSURE_FIELD_TOKENS = ("press", "pressure")
 _TEMPERATURE_FIELD_TOKENS = ("temp", "temperature")
+_NUMERIC_TYPE_WORDS = frozenset(
+    {"signed", "unsigned", "float", "double", "int", "integer", "decimal"}
+)
+_FIELD_KEY_ALIASES = {
+    "absolute_pressure": "abs_press",
+    "temperature": "flow_temp",
+    "flow_temperature": "flow_temp",
+    "volumetric": "volu_flow",
+    "volumetric_flow": "volu_flow",
+    "vol_flow": "volu_flow",
+    "mass": "mass_flow",
+    "set_point": "setpoint",
+    "totalized_flow": "mass_total",
+    "total_flow": "mass_total",
+}
 
 
 @dataclass(frozen=True)
@@ -214,7 +228,7 @@ class DataFrameFormatField:
     unit_id: str
     row_id: str
     index: int
-    statistic: int
+    statistic: int | None
     name: str
     key: str
     data_type: str
@@ -225,19 +239,28 @@ class DataFrameFormatField:
 
     @property
     def is_numeric(self) -> bool:
-        return "decimal" in self.data_type.lower()
+        data_type = self.data_type.lower()
+        if "decimal" in data_type:
+            return True
+        return any(word in _NUMERIC_TYPE_WORDS for word in data_type.split())
 
     @property
     def is_gas(self) -> bool:
-        return self.statistic == 703
+        if self.statistic is not None:
+            return self.statistic == 703
+        return self.key == "gas"
 
     @property
     def is_error(self) -> bool:
-        return self.statistic == 701
+        if self.statistic is not None:
+            return self.statistic == 701
+        return self.key == "error"
 
     @property
     def is_status(self) -> bool:
-        return self.statistic == 702
+        if self.statistic is not None:
+            return self.statistic == 702
+        return self.key == "status"
 
     @property
     def is_pressure(self) -> bool:
@@ -744,6 +767,7 @@ def parse_data_frame_format(lines: Sequence[str]) -> DataFrameFormat:
     header: str | None = None
     fields: list[DataFrameFormatField] = []
     unit_id: str | None = None
+    dialect: str | None = None
     for line in raw_lines:
         match = _DATA_FRAME_FORMAT_RE.match(line)
         if match is None:
@@ -755,19 +779,17 @@ def parse_data_frame_format(lines: Sequence[str]) -> DataFrameFormat:
             raise ParseError("data frame format response contains multiple unit IDs")
 
         row_id = match.group("row_id")
-        statistic_text = match.group("statistic")
         if row_id == "D00":
             header = line
+            dialect = _detect_format_dialect(line)
             continue
-        if not statistic_text.isdigit():
-            raise ParseError(f"invalid statistic in data frame format row: {line!r}")
 
         fields.append(
             _parse_data_frame_format_field(
                 unit_id=row_unit_id,
                 row_id=row_id,
-                statistic=int(statistic_text),
                 rest=match.group("rest"),
+                dialect=dialect,
                 raw=line,
             )
         )
@@ -855,33 +877,96 @@ def _last_register_value(payload: str) -> str:
     return tokens[-1]
 
 
+def _detect_format_dialect(header: str) -> str:
+    """Classify a ``D00`` header row as ``"modern"`` or ``"legacy"``."""
+
+    if "MinVal" in header or "MaxVal" in header or "UNITS" in header.upper():
+        return "legacy"
+    return "modern"
+
+
 def _parse_data_frame_format_field(
     *,
     unit_id: str,
     row_id: str,
-    statistic: int,
     rest: str,
+    dialect: str | None,
     raw: str,
 ) -> DataFrameFormatField:
-    columns = re.split(r"\s{2,}", rest.strip(), maxsplit=2)
+    index = int(row_id[1:])
+    parts = rest.split(maxsplit=1)
+    first = parts[0] if parts else ""
+    if dialect == "legacy" or (dialect is None and not first.isdigit()):
+        return _parse_legacy_format_field(
+            unit_id=unit_id,
+            row_id=row_id,
+            index=index,
+            rest=rest,
+            raw=raw,
+        )
+
+    parts = rest.split(maxsplit=1)
+    statistic_text = parts[0]
+    if not statistic_text.isdigit():
+        raise ParseError(f"invalid statistic in data frame format row: {raw!r}")
+    body = parts[1] if len(parts) > 1 else ""
+    columns = re.split(r"\s{2,}", body.strip(), maxsplit=2)
     if len(columns) < 3:
         raise ParseError(f"invalid data frame format row: {raw!r}")
     name, data_type, width_and_notes = columns
     width, _, notes = width_and_notes.strip().partition(" ")
-    index = int(row_id[1:])
+    note_tokens = tuple(notes.split())
     return DataFrameFormatField(
         unit_id=unit_id,
         row_id=row_id,
         index=index,
-        statistic=statistic,
+        statistic=int(statistic_text),
         name=name.strip(),
-        key=_normalize_field_name(name),
+        key=_canonical_field_key(name, note_tokens),
         data_type=data_type.strip(),
         width=width.strip(),
         notes=notes.strip(),
-        note_tokens=tuple(notes.split()),
+        note_tokens=note_tokens,
         raw=raw,
     )
+
+
+def _parse_legacy_format_field(
+    *,
+    unit_id: str,
+    row_id: str,
+    index: int,
+    rest: str,
+    raw: str,
+) -> DataFrameFormatField:
+    tokens = rest.split()
+    if len(tokens) < 5 or _is_number(tokens[-4]):
+        raise ParseError(f"invalid legacy data frame format row: {raw!r}")
+    name = " ".join(tokens[:-4])
+    data_type = tokens[-4]
+    units = tokens[-1]
+    note_tokens = () if units.lower() in ("", "na") else (units,)
+    return DataFrameFormatField(
+        unit_id=unit_id,
+        row_id=row_id,
+        index=index,
+        statistic=None,
+        name=name,
+        key=_canonical_field_key(name, note_tokens),
+        data_type=data_type,
+        width="",
+        notes=units if note_tokens else "",
+        note_tokens=note_tokens,
+        raw=raw,
+    )
+
+
+def _canonical_field_key(name: str, note_tokens: tuple[str, ...]) -> str:
+    key = _normalize_field_name(name)
+    if key == "pressure":
+        notes = " ".join(note_tokens).upper()
+        return "ga_press" if "PSIG" in notes else "abs_press"
+    return _FIELD_KEY_ALIASES.get(key, key)
 
 
 def _normalize_field_name(name: str) -> str:
