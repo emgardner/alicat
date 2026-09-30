@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence, Tuple
 
 from alicat.client import AbstractClient, AsyncSerialClient, AsyncTcpClient
 from alicat.protocol import (
@@ -323,6 +323,13 @@ class AlicatDriver:
     async def query_firmware_version(self) -> FirmwareResponse:
         response = await self._request_raw(self.commands.query_firmware_version())
         return parse_firmware_response(response)
+
+    async def query_firmware_version_major_minor(self) -> Tuple[int, int]:
+        fw_response = await self.query_firmware_version()
+        split_version = fw_response.version.split("v")
+        major = int(split_version[0])
+        minor = int(split_version[1].split(".")[0])
+        return (major, minor)
 
     async def query_control_point(self) -> ControlPointResponse:
         response = await self._request_raw(self.commands.query_control_point())
